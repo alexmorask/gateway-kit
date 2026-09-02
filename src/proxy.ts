@@ -59,7 +59,10 @@ export function createProxy(selector: TargetSelector): Middleware {
       (upstreamRes) => {
         const chunks: Buffer[] = [];
         upstreamRes.on('data', (chunk: Buffer) => chunks.push(chunk));
-        upstreamRes.on('error', () => settleWith(() => reject(new GatewayError(502, 'bad_gateway'))));
+        upstreamRes.on('error', () => settleWith(() => reject(
+          controller.signal.aborted
+            ? new GatewayError(504, 'gateway_timeout')
+            : new GatewayError(502, 'bad_gateway'))));
         upstreamRes.on('end', () => {
           const response: GatewayResponse = {
             status: upstreamRes.statusCode ?? 502,

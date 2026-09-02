@@ -267,6 +267,35 @@ non-deterministic to test. Smooth weighted round-robin (Nginx-style) — smoothe
 interleaving but more state; the cumulative-weight walk is simpler and meets the
 "proportional over a full cycle" acceptance.
 
+## 15. Multi-agent review hardening: don't crash on client reset
+
+**Decision:** After a pre-finalize multi-agent review, moved request-body reading
+inside the server's `try/catch`, added an `unhandledRejection` backstop and a
+`server.on('error')` handler, logged the real error cause on the 502 path, and
+fixed the proxy to report `504` (not `502`) when a timeout aborts mid-response.
+**Rationale:** The review found a genuine crash: `await collectBody(req)` ran
+outside the try, so a client resetting the socket mid-upload produced an unhandled
+rejection that terminates the process (Node ≥15) — a remote-triggerable DoS.
+Everything else on the request path was already guarded; this closed the one gap.
+**Tradeoff:** None meaningful — the fixes are strictly more defensive.
+**Rejected:** Leaving it — a gateway that a single aborted POST can kill fails the
+"what happens when…" bar outright.
+
+### Known limitations (documented, not fixed under the time-box)
+Surfaced by the review; each is a deliberate defer, not a defect claimed as done:
+- **`per: global` is per-route, not gateway-wide.** The bucket key is
+  `route.path|global`, so each route gets its own shared-across-clients bucket.
+  This reads "default limit applied to *all routes*" as a per-route default; a
+  single gateway-wide budget would key on `global` alone. Defensible interpretation
+  of an ambiguous field.
+- **No request-body size cap** — bodies buffer fully in memory (see decision #6);
+  a max-size guard is future work.
+- **Fixed-window buckets aren't evicted** — distinct client IPs grow the map
+  unbounded; sliding-window self-prunes. Needs periodic eviction / TTL.
+- **Numeric config fields aren't range-checked** — `asNumber` accepts zero/negative/
+  fractional; e.g. all `weight: 0` makes the balancer compute `index % 0 → NaN` and
+  fall back to the first target. Add positive-integer resolvers.
+
 ### Implementation note — native type-stripping constraint
 TypeScript *parameter properties* (`constructor(readonly x: T)`) are rejected at
 runtime by Node's strip-only mode (they require code generation, not just type

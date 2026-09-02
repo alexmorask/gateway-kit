@@ -12,10 +12,18 @@ function resolveConfigPath(): string {
 function main(): void {
   const config = loadConfig(resolveConfigPath());
   const server = createGateway(config);
+  server.on('error', (err) => {
+    process.stderr.write(`server error: ${err.message}\n`);
+    process.exit(1);
+  });
   server.listen(config.port, () => {
     process.stdout.write(`gatewaykit listening on :${config.port}\n`);
   });
 }
+
+process.on('unhandledRejection', (reason) => {
+  process.stderr.write(`unhandled rejection: ${reason instanceof Error ? reason.stack : String(reason)}\n`);
+});
 
 try {
   main();

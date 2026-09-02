@@ -48,30 +48,26 @@ export function createGateway(config: GatewayConfig): Server {
       return;
     }
 
-    const ctx: RequestContext = {
-      clientIp: req.socket.remoteAddress ?? 'unknown',
-      method: method.toUpperCase(),
-      url,
-      headers: req.headers,
-      body: await collectBody(req),
-      route: match.route,
-    };
-
     try {
+      const ctx: RequestContext = {
+        clientIp: req.socket.remoteAddress ?? 'unknown',
+        method: method.toUpperCase(),
+        url,
+        headers: req.headers,
+        body: await collectBody(req),
+        route: match.route,
+      };
       await pipelines.get(match.route)!(ctx);
+      const response = ctx.response ?? { status: 502, headers: {}, body: Buffer.alloc(0) };
+      res.writeHead(response.status, response.headers);
+      res.end(response.body);
     } catch (err) {
-      const status = err instanceof GatewayError ? err.status : 502;
-      const code = err instanceof GatewayError ? err.code : 'bad_gateway';
-      sendJson(res, status, { error: code });
-      return;
+      if (err instanceof GatewayError) {
+        if (!res.headersSent) sendJson(res, err.status, { error: err.code });
+        return;
+      }
+      process.stderr.write(`request error: ${(err as Error).stack ?? String(err)}\n`);
+      if (!res.headersSent) sendJson(res, 502, { error: 'bad_gateway' });
     }
-
-    const response = ctx.response;
-    if (!response) {
-      sendJson(res, 502, { error: 'bad_gateway' });
-      return;
-    }
-    res.writeHead(response.status, response.headers);
-    res.end(response.body);
   });
 }
