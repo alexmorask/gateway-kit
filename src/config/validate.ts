@@ -74,12 +74,13 @@ function resolveRoute(raw: unknown, at: string, globalTimeoutMs: number, globalR
   const obj = asObject(raw, at);
   const methods = obj.methods;
   if (!Array.isArray(methods) || methods.length === 0) fail(`${at}.methods must be a non-empty array`);
+  const upstream = asObject(obj.upstream, `${at}.upstream`);
   return {
     path: asString(obj.path, `${at}.path`),
     methods: methods.map((m, i) => asString(m, `${at}.methods[${i}]`).toUpperCase()),
     stripPrefix: obj.strip_prefix === undefined ? false : Boolean(obj.strip_prefix),
-    upstream: resolveUpstream(obj.upstream, `${at}.upstream`),
-    timeoutMs: obj.timeout === undefined ? globalTimeoutMs : parseDuration(asString(obj.timeout, `${at}.timeout`)),
+    upstream: resolveUpstream(upstream, `${at}.upstream`),
+    timeoutMs: upstream.timeout === undefined ? globalTimeoutMs : parseDuration(asString(upstream.timeout, `${at}.upstream.timeout`)),
     rateLimit: obj.rate_limit === undefined ? globalRateLimit : resolveRateLimit(obj.rate_limit, `${at}.rate_limit`),
   };
 }

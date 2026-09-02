@@ -23,10 +23,9 @@ test('resolves gateway fields and route defaults', () => {
   assert.equal(route.upstream.kind, 'single');
 });
 
-test('route-level timeout and rate_limit override the global defaults', () => {
+test('upstream-level timeout and route-level rate_limit override the global defaults', () => {
   const raw = base();
-  raw.routes[0]!.upstream = { url: 'http://localhost:3001' } as any;
-  (raw.routes[0] as any).timeout = '5s';
+  (raw.routes[0] as any).upstream = { url: 'http://localhost:3001', timeout: '5s' };
   (raw.routes[0] as any).rate_limit = { requests: 10, window: '10s', strategy: 'sliding_window', per: 'global' };
   const route = validateConfig(raw).routes[0]!;
   assert.equal(route.timeoutMs, 5_000);
