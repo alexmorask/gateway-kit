@@ -39,7 +39,7 @@ innermost terminal (it never calls `next`).
 | Component | Does | Depends on |
 | --- | --- | --- |
 | `config/load` | Read file, parse YAML | YAML dep |
-| `config/validate` | Schema → typed `GatewayConfig`; merge global→route defaults; clear error + non-zero exit on bad input | — |
+| `config/validate` | Schema → typed `GatewayConfig`; merge global→route defaults; strict on implemented fields, lenient on not-yet-built blocks (see decision #5); clear error + non-zero exit on bad input | duration |
 | `server` | `http.createServer`, bind `gateway.port`, lifecycle; answer `/health` directly; else hand to router + pipeline; top-level error boundary | config, router, pipeline |
 | `router` | `match(method, path)` → matched route \| 404 \| 405; longest-prefix wins | config |
 | `pipeline/compile` | Build a route's onion from its declared policies | middleware units |

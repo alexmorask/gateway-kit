@@ -10,7 +10,7 @@ requirement — this decides *which* and *when*, never new scope.
 Walking skeleton first (T1–T2 runnable end-to-end); stoppable at any ticket with
 a coherent demo.
 
-### T1 — Scaffold, config load/validate, `/health` — `todo`
+### T1 — Scaffold, config load/validate, `/health` — `done`
 Project scaffold (`package.json` + `engines`, `tsconfig` for `--noEmit`, test/start
 scripts). Read YAML config path from CLI arg (or env var, arg wins), parse +
 validate to a typed `GatewayConfig` with global→route defaults, boot an HTTP

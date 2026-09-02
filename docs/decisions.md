@@ -63,3 +63,19 @@ config's most eye-catching bits and we ship none of them in core.
 leave several half-built under the clock, which the rubric penalizes. Ordering a
 breadth feature (e.g. transforms) into core ahead of resilience — more visible but
 weaker on the graded failure-mode axis.
+
+## 5. Lenient config validation: check what we use, ignore the rest
+
+**Decision:** `validateConfig` strictly validates and resolves the fields the
+implemented features consume (port, timeouts, rate limits, route core, upstream
+shape) and passes over config blocks for features not yet built (retry, auth,
+transforms, circuit_breaker, health_check) without rejecting them.
+**Rationale:** The gateway must boot on *any* valid config in the schema, and we
+ship features incrementally — a config exercising an unbuilt feature must still
+start and serve its other routes rather than fail closed at load. Each feature
+ticket adds strict validation for its own block as it lands.
+**Tradeoff:** A typo inside an unimplemented block passes silently until that
+feature is built, rather than being caught at startup.
+**Rejected:** Strict whole-schema validation up front — catches every typo but
+makes the gateway refuse configs that use any feature we haven't implemented yet,
+breaking the "boots on any valid config" guarantee mid-build.
