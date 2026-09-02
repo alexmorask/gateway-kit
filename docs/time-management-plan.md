@@ -76,3 +76,6 @@ updated · committed. Evidence before assertions.
 - **No code comments** (per conventions) — names and structure carry meaning.
 - Ambiguity in the config is intentional: **make a call, record it in
   `docs/decisions.md`, move on.** Don't stall.
+- **Log AI usage as we go** (in `docs/decisions.md` or commit bodies) so the root
+  `DECISIONS.md` "how you used AI tools" section is authentic at finalize, not
+  reconstructed from memory at 4:55.
