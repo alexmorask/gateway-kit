@@ -133,3 +133,23 @@ health too, but duplicates the id/timing/sink logic outside the middleware and
 weakens the seam demonstration. Logging both places — two code paths for one
 concern. Server-boundary logging is a small, clean follow-up if total ingress
 visibility is wanted.
+
+## 9. Rate-limit client key from socket peer; 429 envelope with Retry-After
+
+**Decision:** For `per: ip`, the bucket key is the direct TCP peer
+(`req.socket.remoteAddress`), not `X-Forwarded-For`. A rejected request returns
+`429` with `{ "error": "rate_limited", "retry_after": <seconds> }` and a
+`Retry-After` header. The store's `check()` is deliberately synchronous.
+**Rationale:** `X-Forwarded-For` is client-spoofable unless the gateway sits
+behind a *trusted* proxy that overwrites it; trusting it by default would let a
+caller dodge limits by forging the header, so the honest, safe default is the
+real peer. The 429 shape mirrors the config's specified circuit-breaker envelope
+for consistency, and `Retry-After` is the standard signal. A synchronous
+check-and-increment is what makes 50 concurrent requests admit exactly the limit
+on Node's single thread (see decision #3) — no lock needed.
+**Tradeoff:** Behind a load balancer every client looks like the balancer's IP, so
+`per: ip` would collapse to one bucket until XFF support (with a trusted-hop
+count) is added. The config schema doesn't expose that knob yet.
+**Rejected:** Trusting `X-Forwarded-For` by default — convenient behind a proxy
+but insecure when directly exposed. Making the 429 body match no known convention
+— the breaker envelope is already in the spec, so reuse it.

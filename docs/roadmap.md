@@ -48,7 +48,7 @@ concern cleanly.
   correlation id, method, path, matched route, upstream, status, and latency.
 - **DoD:** as above.
 
-### T4 — Rate limiting — `todo`
+### T4 — Rate limiting — `done`
 `rateLimit` middleware over an in-memory bucket store; fixed_window and
 sliding_window; `per: ip` / `per: global`; route `rate_limit` overrides
 `gateway.global_rate_limit`.

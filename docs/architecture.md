@@ -48,7 +48,8 @@ innermost terminal (it never calls `next`).
 | `upstream/select` | round-robin / weighted target selection | — |
 | `upstream/health` | Active health checks; remove/restore targets | — |
 | `upstream/breaker` | Circuit-breaker state per route | — |
-| `rateLimit/store` | In-memory fixed/sliding buckets | — |
+| `rateLimit/store` | In-memory fixed/sliding buckets; synchronous `check()` so concurrent admission is exact (decisions #3, #9) | — |
+| `middleware/rateLimit` | Keys by `route.path`+client (ip or global), 429 + `Retry-After` over the store | rateLimit/store |
 | `duration` | Parse config duration strings (`"30s"`, `"1m"`, `"2h"`) → ms; one shared, tested utility | — |
 | `context` | `RequestContext`: correlation id, mutable request parts, response holder, timing | — |
 | `errors` | Typed `GatewayError(status, code)` | — |

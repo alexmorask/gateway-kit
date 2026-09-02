@@ -13,7 +13,7 @@ const route: RouteConfig = {
 };
 
 function ctx(): RequestContext {
-  return { method: 'GET', url: '/api/users?page=2', headers: {}, body: Buffer.alloc(0), route };
+  return { clientIp: '127.0.0.1', method: 'GET', url: '/api/users?page=2', headers: {}, body: Buffer.alloc(0), route };
 }
 
 test('emits one structured entry with request detail and a correlation id', async () => {

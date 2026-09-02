@@ -9,6 +9,7 @@ export interface GatewayResponse {
 
 export interface RequestContext {
   correlationId?: string;
+  clientIp: string;
   method: string;
   url: string;
   headers: IncomingHttpHeaders;

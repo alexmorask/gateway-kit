@@ -1,7 +1,13 @@
 import type { RequestContext } from './context.ts';
 import type { RouteConfig } from './config/types.ts';
 import { logging } from './middleware/logging.ts';
+import { rateLimitMiddleware } from './middleware/rateLimit.ts';
 import { proxy } from './proxy.ts';
+import type { RateLimiter } from './rateLimit/store.ts';
+
+export interface PipelineDeps {
+  rateLimiter: RateLimiter;
+}
 
 export type Middleware = (ctx: RequestContext, next: () => Promise<void>) => Promise<void>;
 
@@ -19,6 +25,9 @@ export function compile(middlewares: Middleware[]): (ctx: RequestContext) => Pro
   };
 }
 
-export function assembleMiddleware(_route: RouteConfig): Middleware[] {
-  return [logging, proxy];
+export function assembleMiddleware(route: RouteConfig, deps: PipelineDeps): Middleware[] {
+  const middlewares: Middleware[] = [logging];
+  if (route.rateLimit) middlewares.push(rateLimitMiddleware(deps.rateLimiter));
+  middlewares.push(proxy);
+  return middlewares;
 }
