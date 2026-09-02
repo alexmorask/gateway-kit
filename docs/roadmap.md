@@ -76,8 +76,9 @@ sliding_window; `per: ip` / `per: global`; route `rate_limit` overrides
 
 ## Backlog — ranked (pull top-down only if core lands early)
 
-1. **B1 — API-key auth (R13).** Cheap, clean, high-clarity `401` win. One
-   middleware, no new subsystem.
+1. **B1 — API-key auth (R13).** `done` — pulled into the build after core landed
+   early. One `auth` middleware: 401 on missing/unknown key, strips the key before
+   forwarding, ordered after rate limiting (decision #13).
 2. **B2 — Load balancing (R9).** round_robin / weighted_round_robin target
    selection. Self-contained in `upstream/select`.
 3. **B3 — Circuit breaker (R14).** Per-route state machine; 503 with `retry_after`.

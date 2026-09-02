@@ -1,5 +1,6 @@
 import { parseDuration } from './duration.ts';
 import type {
+  AuthConfig,
   BackoffStrategy,
   BalanceStrategy,
   GatewayConfig,
@@ -84,6 +85,17 @@ function resolveRetry(raw: unknown, at: string): RetryConfig {
   };
 }
 
+function resolveAuth(raw: unknown, at: string): AuthConfig {
+  const obj = asObject(raw, at);
+  const keys = obj.keys;
+  if (!Array.isArray(keys) || keys.length === 0) fail(`${at}.keys must be a non-empty array`);
+  return {
+    type: asEnum(obj.type, ['api_key'], `${at}.type`),
+    header: asString(obj.header, `${at}.header`),
+    keys: keys.map((k, i) => asString(k, `${at}.keys[${i}]`)),
+  };
+}
+
 function resolveRoute(raw: unknown, at: string, globalTimeoutMs: number, globalRateLimit?: ResolvedRateLimit): RouteConfig {
   const obj = asObject(raw, at);
   const methods = obj.methods;
@@ -97,6 +109,7 @@ function resolveRoute(raw: unknown, at: string, globalTimeoutMs: number, globalR
     timeoutMs: upstream.timeout === undefined ? globalTimeoutMs : parseDuration(asString(upstream.timeout, `${at}.upstream.timeout`)),
     rateLimit: obj.rate_limit === undefined ? globalRateLimit : resolveRateLimit(obj.rate_limit, `${at}.rate_limit`),
     retry: obj.retry === undefined ? undefined : resolveRetry(obj.retry, `${at}.retry`),
+    auth: obj.auth === undefined ? undefined : resolveAuth(obj.auth, `${at}.auth`),
   };
 }
 

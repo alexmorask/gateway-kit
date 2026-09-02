@@ -10,6 +10,12 @@ export interface RetryConfig {
   on: number[];
 }
 
+export interface AuthConfig {
+  type: 'api_key';
+  header: string;
+  keys: string[];
+}
+
 export interface ResolvedRateLimit {
   requests: number;
   windowMs: number;
@@ -43,6 +49,7 @@ export interface RouteConfig {
   timeoutMs: number;
   rateLimit?: ResolvedRateLimit;
   retry?: RetryConfig;
+  auth?: AuthConfig;
 }
 
 export interface GatewayConfig {

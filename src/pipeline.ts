@@ -2,6 +2,7 @@ import type { RequestContext } from './context.ts';
 import type { RouteConfig } from './config/types.ts';
 import { logging } from './middleware/logging.ts';
 import { rateLimitMiddleware } from './middleware/rateLimit.ts';
+import { authMiddleware } from './middleware/auth.ts';
 import { withRetry } from './middleware/retry.ts';
 import { proxy } from './proxy.ts';
 import type { RateLimiter } from './rateLimit/store.ts';
@@ -29,6 +30,7 @@ export function compile(middlewares: Middleware[]): (ctx: RequestContext) => Pro
 export function assembleMiddleware(route: RouteConfig, deps: PipelineDeps): Middleware[] {
   const middlewares: Middleware[] = [logging];
   if (route.rateLimit) middlewares.push(rateLimitMiddleware(deps.rateLimiter));
+  if (route.auth) middlewares.push(authMiddleware);
   middlewares.push(route.retry ? withRetry(proxy, route.retry) : proxy);
   return middlewares;
 }

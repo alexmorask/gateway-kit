@@ -37,7 +37,7 @@ rings** — they are upstream-invocation concerns folded into the terminal: time
 lives inside the proxy (it must abort the socket) and retry *wraps* the proxy
 (`withRetry(proxy)`), so each attempt gets a fresh timeout. This also respects the
 `compile` guard that `next` is called at most once. Implemented so far:
-`[logging, rateLimit?, retry(proxy) | proxy]`.
+`[logging, rateLimit?, auth?, retry(proxy) | proxy]`.
 
 ## Components
 
@@ -56,6 +56,7 @@ lives inside the proxy (it must abort the socket) and retry *wraps* the proxy
 | `upstream/breaker` | Circuit-breaker state per route | — |
 | `rateLimit/store` | In-memory fixed/sliding buckets; synchronous `check()` so concurrent admission is exact (decisions #3, #9) | — |
 | `middleware/rateLimit` | Keys by `route.path`+client (ip or global), 429 + `Retry-After` over the store | rateLimit/store |
+| `middleware/auth` | API-key gate: 401 on missing/unknown key, strips the key before forwarding; runs after rateLimit (decision #13) | — |
 | `duration` | Parse config duration strings (`"30s"`, `"1m"`, `"2h"`) → ms; one shared, tested utility | — |
 | `context` | `RequestContext`: correlation id, mutable request parts, response holder, timing | — |
 | `errors` | Typed `GatewayError(status, code)`; server boundary maps it to the client response, logging reads it for accurate status (decision #10) | — |

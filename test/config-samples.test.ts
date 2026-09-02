@@ -34,6 +34,7 @@ test('resolves the provided gateway.yaml exactly as the schema intends', () => {
   assert.equal(byPath['/api/legacy']!.stripPrefix, true);
   assert.equal(byPath['/api/legacy']!.timeoutMs, 30_000);
   assert.deepEqual(byPath['/api/internal']!.rateLimit, cfg.globalRateLimit);
+  assert.deepEqual(byPath['/api/internal']!.auth, { type: 'api_key', header: 'X-API-Key', keys: ['sk_live_abc123', 'sk_live_def456'] });
 });
 
 test('resolves a structurally different valid config', () => {

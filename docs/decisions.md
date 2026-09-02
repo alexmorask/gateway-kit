@@ -221,6 +221,28 @@ in `on` describe. Gating to idempotent methods now — safer, but contradicts a
 config that enables retry on a route whose `methods` include POST, and isn't
 expressible in the schema.
 
+## 13. API-key auth: rate-limit before auth, strip the key before forwarding
+
+**Decision:** The `auth` middleware sits *after* `rateLimit` and *before* the
+proxy in the onion. A request missing the configured header, or presenting a key
+not in `keys`, gets `401 {"error":"unauthorized"}`; a valid key proceeds and the
+key header is **deleted** before forwarding upstream.
+**Rationale:** Rate-limiting before auth means key-guessing and unauthenticated
+floods are throttled before they reach the auth check — auth-first would let an
+attacker try unlimited keys (each a fast 401) because the limiter, sitting after
+auth, never runs on a rejected request. Stripping the key stops the gateway's
+credential from leaking to upstreams that don't need it (the spec says don't
+forward it, and the schema has no "keep it" flag).
+**Tradeoff:** Ordering only matters for a route with *both* `rate_limit` and
+`auth` (none in the sample), and rate-limiting first means unauthenticated
+attempts consume the per-IP bucket shared with legitimate callers. Key comparison
+uses `Array.includes` (not constant-time), so it's theoretically timing-observable
+— acceptable here, hardening (constant-time compare) noted as future work.
+**Rejected:** Auth before rate limit — matches the original architecture sketch
+but exposes key brute-forcing. Forwarding the key upstream — convenient if the
+backend also authenticates, but leaks the gateway credential by default with no
+config opt-in.
+
 ### Implementation note — native type-stripping constraint
 TypeScript *parameter properties* (`constructor(readonly x: T)`) are rejected at
 runtime by Node's strip-only mode (they require code generation, not just type
