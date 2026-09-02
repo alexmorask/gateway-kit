@@ -2,6 +2,7 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import { matchRoute } from './router.ts';
 import { assembleMiddleware, compile, type PipelineDeps } from './pipeline.ts';
 import { createRateLimiter } from './rateLimit/store.ts';
+import { GatewayError } from './errors.ts';
 import type { GatewayConfig, RouteConfig } from './config/types.ts';
 import type { RequestContext } from './context.ts';
 
@@ -57,8 +58,10 @@ export function createGateway(config: GatewayConfig): Server {
 
     try {
       await pipelines.get(match.route)!(ctx);
-    } catch {
-      sendJson(res, 502, { error: 'bad_gateway' });
+    } catch (err) {
+      const status = err instanceof GatewayError ? err.status : 502;
+      const code = err instanceof GatewayError ? err.code : 'bad_gateway';
+      sendJson(res, status, { error: code });
       return;
     }
 

@@ -44,7 +44,7 @@ innermost terminal (it never calls `next`).
 | `router` | `match(method, path)` → matched route \| 404 \| 405; longest-prefix wins | config |
 | `pipeline/compile` | Build a route's onion from its declared policies | middleware units |
 | `middleware/*` | `auth`, `rateLimit`, `requestTransform`, `responseTransform`, `timeout`, `retry`, `circuitBreaker`, `logging` — each a `Middleware` | context, stores |
-| `proxy` | Innermost: rewrite Host, strip hop-by-hop headers, build the upstream request via Node `http`/`https`, buffer the response into `ctx` (decision #6) | upstream select |
+| `proxy` | Innermost: rewrite Host, strip hop-by-hop headers, build the upstream request via Node `http`/`https`, apply the per-request timeout via `AbortController` (504 on abort, 502 on connection failure — decision #10), buffer the response into `ctx` (decision #6) | upstream select |
 | `upstream/select` | round-robin / weighted target selection | — |
 | `upstream/health` | Active health checks; remove/restore targets | — |
 | `upstream/breaker` | Circuit-breaker state per route | — |
@@ -52,7 +52,7 @@ innermost terminal (it never calls `next`).
 | `middleware/rateLimit` | Keys by `route.path`+client (ip or global), 429 + `Retry-After` over the store | rateLimit/store |
 | `duration` | Parse config duration strings (`"30s"`, `"1m"`, `"2h"`) → ms; one shared, tested utility | — |
 | `context` | `RequestContext`: correlation id, mutable request parts, response holder, timing | — |
-| `errors` | Typed `GatewayError(status, code)` | — |
+| `errors` | Typed `GatewayError(status, code)`; server boundary maps it to the client response, logging reads it for accurate status (decision #10) | — |
 | `middleware/logging` | Outermost middleware: correlation id (+ `x-correlation-id` header), one structured JSON line per routed request, always via `finally` (decision #8) | context |
 
 ## Request flow

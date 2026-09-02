@@ -1,6 +1,7 @@
 import { request as httpRequest, type IncomingHttpHeaders, type ClientRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { forwardPath } from './router.ts';
+import { GatewayError } from './errors.ts';
 import type { Middleware } from './pipeline.ts';
 import type { GatewayResponse } from './context.ts';
 import type { Upstream } from './config/types.ts';
@@ -40,6 +41,13 @@ export const proxy: Middleware = (ctx) =>
   new Promise<void>((resolve, reject) => {
     const target = new URL(forwardPath(ctx.route, ctx.url), baseUrl(ctx.route.upstream));
     const send = target.protocol === 'https:' ? httpsRequest : httpRequest;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ctx.route.timeoutMs);
+
+    const settleWith = (settle: () => void): void => {
+      clearTimeout(timer);
+      settle();
+    };
 
     const upstreamReq: ClientRequest = send(
       {
@@ -49,10 +57,12 @@ export const proxy: Middleware = (ctx) =>
         method: ctx.method,
         path: target.pathname + target.search,
         headers: outboundHeaders(ctx.headers, target.host),
+        signal: controller.signal,
       },
       (upstreamRes) => {
         const chunks: Buffer[] = [];
         upstreamRes.on('data', (chunk: Buffer) => chunks.push(chunk));
+        upstreamRes.on('error', () => settleWith(() => reject(new GatewayError(502, 'bad_gateway'))));
         upstreamRes.on('end', () => {
           const response: GatewayResponse = {
             status: upstreamRes.statusCode ?? 502,
@@ -60,12 +70,17 @@ export const proxy: Middleware = (ctx) =>
             body: Buffer.concat(chunks),
           };
           ctx.response = response;
-          resolve();
+          settleWith(resolve);
         });
       },
     );
 
-    upstreamReq.on('error', reject);
+    upstreamReq.on('error', () => {
+      settleWith(() =>
+        reject(controller.signal.aborted
+          ? new GatewayError(504, 'gateway_timeout')
+          : new GatewayError(502, 'bad_gateway')));
+    });
     if (ctx.body.length > 0) upstreamReq.write(ctx.body);
     upstreamReq.end();
   });

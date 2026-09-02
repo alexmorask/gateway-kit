@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { GatewayError } from '../errors.ts';
 import type { Middleware } from '../pipeline.ts';
 import type { Upstream } from '../config/types.ts';
 
@@ -29,9 +30,14 @@ export function loggingMiddleware(sink: LogSink = writeLine): Middleware {
     const correlationId = randomUUID();
     ctx.correlationId = correlationId;
     const startedAt = Date.now();
+    let status = 502;
     try {
       await next();
+      status = ctx.response?.status ?? 502;
       if (ctx.response) ctx.response.headers['x-correlation-id'] = correlationId;
+    } catch (err) {
+      status = err instanceof GatewayError ? err.status : 502;
+      throw err;
     } finally {
       sink({
         correlation_id: correlationId,
@@ -39,7 +45,7 @@ export function loggingMiddleware(sink: LogSink = writeLine): Middleware {
         path: ctx.url,
         route: ctx.route.path,
         upstream: upstreamLabel(ctx.route.upstream),
-        status: ctx.response?.status ?? 502,
+        status,
         latency_ms: Date.now() - startedAt,
       });
     }

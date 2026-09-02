@@ -60,7 +60,7 @@ sliding_window; `per: ip` / `per: global`; route `rate_limit` overrides
   send a `Retry-After` header. Record in `docs/decisions.md`.
 - **DoD:** as above.
 
-### T5 — Timeout + resilient upstream failures — `todo`
+### T5 — Timeout + resilient upstream failures — `done`
 `timeout` middleware + upstream error mapping.
 - **Acceptance (R7, R15):** upstream slower than the effective (per-route or
   global) timeout → 504; refused/unreachable upstream → 502; gateway stays up and

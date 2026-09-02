@@ -153,3 +153,33 @@ count) is added. The config schema doesn't expose that knob yet.
 **Rejected:** Trusting `X-Forwarded-For` by default — convenient behind a proxy
 but insecure when directly exposed. Making the 429 body match no known convention
 — the breaker envelope is already in the spec, so reuse it.
+
+## 10. Timeout lives in the proxy (AbortController); failures are typed GatewayErrors
+
+**Decision:** The upstream timeout is applied inside the proxy via an
+`AbortController` that aborts the in-flight request, not as a racing middleware
+around it. Upstream failures reject with a typed `GatewayError(status, code)` —
+`504 gateway_timeout` on abort, `502 bad_gateway` on connection/refused/reset —
+which the server boundary maps to the client response and the logging middleware
+reads for an accurate status. Partially reverses the architecture's original
+"timeout as a middleware" sketch.
+**Rationale:** A timeout must actually cancel the socket, not just stop awaiting a
+promise — a middleware that races a timer against `next()` would return 504 while
+the upstream connection leaks in the background. Only the code holding the request
+can abort it, so timeout belongs with the proxy. A per-request abort also gives
+retry (T6) a natural per-attempt timeout when it wraps the proxy. Typing errors
+keeps status decisions in one taxonomy instead of scattered `if` checks.
+**Tradeoff:** The `timeout` concern is no longer a standalone onion layer, so the
+seam doesn't showcase it; it's coupled to the proxy's request lifecycle.
+**Rejected:** Timeout as a racing middleware — fits the onion diagram but can't
+cancel the socket, leaking connections and diverging the reported status from
+reality. `req.setTimeout` alone — fires a callback but doesn't destroy the request
+as cleanly as an `AbortController`, and is fiddlier to distinguish from a genuine
+socket error.
+
+### Implementation note — native type-stripping constraint
+TypeScript *parameter properties* (`constructor(readonly x: T)`) are rejected at
+runtime by Node's strip-only mode (they require code generation, not just type
+erasure) even though `tsc` accepts them. `GatewayError` declares its fields
+explicitly and assigns them in the constructor. Same class of constraint applies
+to enums and namespaces — avoid them in `src/`.
