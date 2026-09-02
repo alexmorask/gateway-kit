@@ -35,6 +35,37 @@ curl localhost:8080/health
 A malformed or unreadable config exits non-zero with a clear message and no
 half-started server.
 
+## See it proxy (end-to-end by hand)
+
+The sample `gateway.yaml` routes to `localhost:3001–3006`, which aren't real
+services — so a bare gateway returns **502** for those routes (correct resilient
+behavior when an upstream is down). To watch real proxying, stand up the bundled
+mock upstream on those ports first. Use **three terminals**:
+
+```bash
+# terminal 1 — fake upstreams on the ports the sample config uses (3001-3006)
+npm run mock
+
+# terminal 2 — the gateway
+npm start -- gateway.yaml
+
+# terminal 3 — exercise it
+curl localhost:8080/health                          # 200 {"status":"healthy",...}
+curl localhost:8080/api/users                        # proxied -> mock echoes method/path/headers
+curl -X DELETE localhost:8080/api/users              # 405 (method not allowed)
+curl localhost:8080/nope                             # 404 (no route)
+curl localhost:8080/api/internal                     # 401 (auth required)
+curl -H "X-API-Key: sk_live_abc123" localhost:8080/api/internal   # 200 (valid key)
+curl "localhost:8080/api/products/123"               # load-balanced 3:1 across :3003/:3004
+
+# rate limiting: /api/users allows 30/60s (sliding) — the tail turns into 429s
+for i in $(seq 1 35); do curl -s -o /dev/null -w "%{http_code} " localhost:8080/api/users; done; echo
+```
+
+`npm run mock` accepts explicit ports too (e.g. `npm run mock -- 3001 3002`). The
+mock also has `/slow?ms=N` (to trigger a 504 against a route with a short timeout)
+and `/flaky` (503 then 200, to see retries) endpoints.
+
 ## Tests
 
 Self-contained — a mock upstream is spun up in-process; no external services.
@@ -44,8 +75,9 @@ npm test        # node --test, ~60 tests
 npm run typecheck   # tsc --noEmit
 ```
 
-The `mock/upstream.ts` server (canned echo + slow + flaky + teapot endpoints)
-backs the integration tests and can be run to exercise the gateway by hand.
+`npm test` needs no setup — it starts its own mock upstreams in-process. The same
+`mock/upstream.ts` (canned echo + `/slow` + `/flaky` + `/teapot`) is what
+`npm run mock` stands up for the manual walkthrough above.
 
 ## Configuration
 
