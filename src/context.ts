@@ -7,6 +7,18 @@ export interface GatewayResponse {
   body: Buffer;
 }
 
+export function jsonResponse(
+  status: number,
+  body: unknown,
+  extraHeaders: Record<string, string | string[]> = {},
+): GatewayResponse {
+  return {
+    status,
+    headers: { 'content-type': 'application/json', ...extraHeaders },
+    body: Buffer.from(JSON.stringify(body)),
+  };
+}
+
 export interface RequestContext {
   correlationId?: string;
   clientIp: string;

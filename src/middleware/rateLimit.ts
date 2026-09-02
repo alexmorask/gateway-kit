@@ -1,3 +1,4 @@
+import { jsonResponse } from '../context.ts';
 import type { Middleware } from '../pipeline.ts';
 import type { RateLimiter } from '../rateLimit/store.ts';
 
@@ -11,10 +12,6 @@ export function rateLimitMiddleware(limiter: RateLimiter, now: () => number = Da
     if (decision.allowed) return next();
 
     const retryAfter = Math.ceil(decision.retryAfterMs / 1000);
-    ctx.response = {
-      status: 429,
-      headers: { 'content-type': 'application/json', 'retry-after': String(retryAfter) },
-      body: Buffer.from(JSON.stringify({ error: 'rate_limited', retry_after: retryAfter })),
-    };
+    ctx.response = jsonResponse(429, { error: 'rate_limited', retry_after: retryAfter }, { 'retry-after': String(retryAfter) });
   };
 }
