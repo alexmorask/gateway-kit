@@ -1,5 +1,6 @@
 import type { RequestContext } from './context.ts';
 import type { RouteConfig } from './config/types.ts';
+import { logging } from './middleware/logging.ts';
 import { proxy } from './proxy.ts';
 
 export type Middleware = (ctx: RequestContext, next: () => Promise<void>) => Promise<void>;
@@ -19,5 +20,5 @@ export function compile(middlewares: Middleware[]): (ctx: RequestContext) => Pro
 }
 
 export function assembleMiddleware(_route: RouteConfig): Middleware[] {
-  return [proxy];
+  return [logging, proxy];
 }

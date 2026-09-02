@@ -41,7 +41,7 @@ T5/T6).
   header stripping (`Connection`, etc.). Record each in `docs/decisions.md`.
 - **DoD:** as above.
 
-### T3 — Logging middleware with correlation id — `todo`
+### T3 — Logging middleware with correlation id — `done`
 A `logging` middleware at the outermost layer — proves the seam carries a second
 concern cleanly.
 - **Acceptance (R16):** each request emits one JSON line with a generated

@@ -113,3 +113,23 @@ backend until B2.
 **Rejected:** Refusing balanced upstreams until B2 — would break configs that use
 `targets`. Shipping a rushed balancer now — risks a brittle feature ahead of the
 prioritized resilience work.
+
+## 8. Access logging lives on the pipeline seam (logs routed requests)
+
+**Decision:** The correlation id and one-line access log are a `logging`
+middleware at the outermost layer of the per-route onion. It generates the id,
+sets it on `ctx` and as an `x-correlation-id` response header, times the request,
+and logs once in a `finally` (so failures log too). Unmatched (404), method-not-
+allowed (405), and `/health` are answered before the pipeline and are not logged.
+**Rationale:** Putting it on the seam is the cleanest demonstration that the onion
+carries a second concern with zero plumbing changes — one entry in
+`assembleMiddleware`, no server rewiring — which is exactly the extensibility the
+architecture is selling. It also gives every routed request an id that inner
+middleware and the response share.
+**Tradeoff:** Requests that never reach a route (404/405) and health checks aren't
+access-logged, so the log doesn't capture total ingress.
+**Rejected:** A server-boundary logger wrapping all requests — captures 404/405/
+health too, but duplicates the id/timing/sink logic outside the middleware and
+weakens the seam demonstration. Logging both places — two code paths for one
+concern. Server-boundary logging is a small, clean follow-up if total ingress
+visibility is wanted.

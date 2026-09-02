@@ -52,7 +52,7 @@ innermost terminal (it never calls `next`).
 | `duration` | Parse config duration strings (`"30s"`, `"1m"`, `"2h"`) → ms; one shared, tested utility | — |
 | `context` | `RequestContext`: correlation id, mutable request parts, response holder, timing | — |
 | `errors` | Typed `GatewayError(status, code)` | — |
-| `logging` | One structured JSON line per request | context |
+| `middleware/logging` | Outermost middleware: correlation id (+ `x-correlation-id` header), one structured JSON line per routed request, always via `finally` (decision #8) | context |
 
 ## Request flow
 

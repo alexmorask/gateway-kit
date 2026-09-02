@@ -8,6 +8,7 @@ export interface GatewayResponse {
 }
 
 export interface RequestContext {
+  correlationId?: string;
   method: string;
   url: string;
   headers: IncomingHttpHeaders;
