@@ -4,11 +4,13 @@ import { logging } from './middleware/logging.ts';
 import { rateLimitMiddleware } from './middleware/rateLimit.ts';
 import { authMiddleware } from './middleware/auth.ts';
 import { withRetry } from './middleware/retry.ts';
-import { proxy } from './proxy.ts';
+import { createProxy } from './proxy.ts';
 import type { RateLimiter } from './rateLimit/store.ts';
+import type { TargetSelector } from './upstream/select.ts';
 
 export interface PipelineDeps {
   rateLimiter: RateLimiter;
+  selector: TargetSelector;
 }
 
 export type Middleware = (ctx: RequestContext, next: () => Promise<void>) => Promise<void>;
@@ -28,6 +30,7 @@ export function compile(middlewares: Middleware[]): (ctx: RequestContext) => Pro
 }
 
 export function assembleMiddleware(route: RouteConfig, deps: PipelineDeps): Middleware[] {
+  const proxy = createProxy(deps.selector);
   const middlewares: Middleware[] = [logging];
   if (route.rateLimit) middlewares.push(rateLimitMiddleware(deps.rateLimiter));
   if (route.auth) middlewares.push(authMiddleware);

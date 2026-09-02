@@ -101,6 +101,8 @@ restructure bodies.
 
 ## 7. Balanced upstreams proxy to the first target until load balancing lands
 
+**Superseded by #14** (load balancing shipped).
+
 **Decision:** For an upstream declared with `targets`, the proxy currently forwards
 to the first target; real `round_robin` / `weighted_round_robin` selection is
 backlog ticket B2.
@@ -242,6 +244,28 @@ uses `Array.includes` (not constant-time), so it's theoretically timing-observab
 but exposes key brute-forcing. Forwarding the key upstream — convenient if the
 backend also authenticates, but leaks the gateway credential by default with no
 config opt-in.
+
+## 14. Load balancing via a stateful per-route target selector (supersedes #7)
+
+**Decision:** A `TargetSelector` holds a per-route cursor and picks the next
+target: `round_robin` cycles targets evenly (weights ignored), and
+`weighted_round_robin` walks cumulative weights so each target appears in
+proportion to its `weight` over a full cycle. A single instance is created per
+gateway and injected via `PipelineDeps`; the proxy is now a factory
+(`createProxy(selector)`) that consults it per request.
+**Rationale:** Keeps balancing state in one place with the same injected-shared-
+state pattern as the rate limiter, and makes the selector a pure, deterministically
+testable unit. Because `withRetry` re-invokes the proxy per attempt and each
+invocation advances the cursor, **retries naturally fail over to the next target**
+— a useful emergent behavior at no extra cost.
+**Tradeoff:** The cursor is per-process (like all our state — decision #3), so
+across instances distribution isn't globally coordinated. Selection is unaware of
+target health until active health checks (B5) land, so a down target still takes
+its turn (retry mitigates this by failing over).
+**Rejected:** Random selection — simpler but uneven over small samples and
+non-deterministic to test. Smooth weighted round-robin (Nginx-style) — smoother
+interleaving but more state; the cumulative-weight walk is simpler and meets the
+"proportional over a full cycle" acceptance.
 
 ### Implementation note — native type-stripping constraint
 TypeScript *parameter properties* (`constructor(readonly x: T)`) are rejected at

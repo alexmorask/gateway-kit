@@ -4,16 +4,12 @@ import { forwardPath } from './router.ts';
 import { GatewayError } from './errors.ts';
 import type { Middleware } from './pipeline.ts';
 import type { GatewayResponse } from './context.ts';
-import type { Upstream } from './config/types.ts';
+import type { TargetSelector } from './upstream/select.ts';
 
 const HOP_BY_HOP = new Set([
   'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
   'te', 'trailer', 'transfer-encoding', 'upgrade',
 ]);
-
-function baseUrl(upstream: Upstream): string {
-  return upstream.kind === 'single' ? upstream.url : upstream.targets[0]!.url;
-}
 
 function outboundHeaders(headers: IncomingHttpHeaders, host: string): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
@@ -37,9 +33,10 @@ function responseHeaders(headers: IncomingHttpHeaders): Record<string, string | 
   return out;
 }
 
-export const proxy: Middleware = (ctx) =>
+export function createProxy(selector: TargetSelector): Middleware {
+  return (ctx) =>
   new Promise<void>((resolve, reject) => {
-    const target = new URL(forwardPath(ctx.route, ctx.url), baseUrl(ctx.route.upstream));
+    const target = new URL(forwardPath(ctx.route, ctx.url), selector.next(ctx.route.path, ctx.route.upstream));
     const send = target.protocol === 'https:' ? httpsRequest : httpRequest;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ctx.route.timeoutMs);
@@ -84,3 +81,4 @@ export const proxy: Middleware = (ctx) =>
     if (ctx.body.length > 0) upstreamReq.write(ctx.body);
     upstreamReq.end();
   });
+}

@@ -79,8 +79,9 @@ sliding_window; `per: ip` / `per: global`; route `rate_limit` overrides
 1. **B1 — API-key auth (R13).** `done` — pulled into the build after core landed
    early. One `auth` middleware: 401 on missing/unknown key, strips the key before
    forwarding, ordered after rate limiting (decision #13).
-2. **B2 — Load balancing (R9).** round_robin / weighted_round_robin target
-   selection. Self-contained in `upstream/select`.
+2. **B2 — Load balancing (R9).** `done` — round_robin / weighted_round_robin via
+   a stateful per-route `TargetSelector` (decision #14). Retry fails over to the
+   next target.
 3. **B3 — Circuit breaker (R14).** Per-route state machine; 503 with `retry_after`.
    Depends on failure accounting.
 4. **B4 — Request/response transforms (R11, R12).** Header add/remove + body

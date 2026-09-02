@@ -2,6 +2,7 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import { matchRoute } from './router.ts';
 import { assembleMiddleware, compile, type PipelineDeps } from './pipeline.ts';
 import { createRateLimiter } from './rateLimit/store.ts';
+import { createTargetSelector } from './upstream/select.ts';
 import { GatewayError } from './errors.ts';
 import type { GatewayConfig, RouteConfig } from './config/types.ts';
 import type { RequestContext } from './context.ts';
@@ -22,7 +23,7 @@ function collectBody(req: IncomingMessage): Promise<Buffer> {
 
 export function createGateway(config: GatewayConfig): Server {
   const startedAt = Date.now();
-  const deps: PipelineDeps = { rateLimiter: createRateLimiter() };
+  const deps: PipelineDeps = { rateLimiter: createRateLimiter(), selector: createTargetSelector() };
   const pipelines = new Map<RouteConfig, (ctx: RequestContext) => Promise<void>>();
   for (const route of config.routes) {
     pipelines.set(route, compile(assembleMiddleware(route, deps)));

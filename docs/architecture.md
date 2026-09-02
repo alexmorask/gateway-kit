@@ -51,7 +51,7 @@ lives inside the proxy (it must abort the socket) and retry *wraps* the proxy
 | `middleware/*` | `auth`, `rateLimit`, `requestTransform`, `responseTransform`, `timeout`, `retry`, `circuitBreaker`, `logging` — each a `Middleware` | context, stores |
 | `proxy` | Innermost: rewrite Host, strip hop-by-hop headers, build the upstream request via Node `http`/`https`, apply the per-request timeout via `AbortController` (504 on abort, 502 on connection failure — decision #10), buffer the response into `ctx` (decision #6) | upstream select |
 | `middleware/retry` | Wraps the proxy as the terminal (not an onion ring); re-attempts on statuses/errors in `retry.on` with fixed/exponential backoff, each attempt getting its own timeout (decision #12) | proxy, errors |
-| `upstream/select` | round-robin / weighted target selection | — |
+| `upstream/select` | Stateful per-route target selection: round-robin / weighted (decision #14); retry fails over to the next target | — |
 | `upstream/health` | Active health checks; remove/restore targets | — |
 | `upstream/breaker` | Circuit-breaker state per route | — |
 | `rateLimit/store` | In-memory fixed/sliding buckets; synchronous `check()` so concurrent admission is exact (decisions #3, #9) | — |
