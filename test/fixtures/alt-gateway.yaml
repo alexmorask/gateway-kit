@@ -1,0 +1,24 @@
+gateway:
+  port: 9090
+  global_timeout: "2m"
+  global_rate_limit:
+    requests: 5
+    window: "1s"
+    strategy: "sliding_window"
+    per: "global"
+
+routes:
+  - path: "/v2/search"
+    methods: ["GET"]
+    strip_prefix: true
+    upstream:
+      targets:
+        - url: "http://localhost:4001"
+        - url: "http://localhost:4002"
+      balance: "round_robin"
+      timeout: "500ms"
+
+  - path: "/v2/ping"
+    methods: ["GET", "HEAD"]
+    upstream:
+      url: "http://localhost:4003"

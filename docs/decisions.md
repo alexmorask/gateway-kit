@@ -177,6 +177,22 @@ reality. `req.setTimeout` alone — fires a callback but doesn't destroy the req
 as cleanly as an `AbortController`, and is fiddlier to distinguish from a genuine
 socket error.
 
+## 11. Anchor config tests to the real spec artifact, not hand-built fixtures
+
+**Decision:** Config validation is tested by loading the *actual* `gateway.yaml`
+(the file that is the spec) and a second, structurally different fixture, then
+asserting the fully-resolved output — in addition to the hand-built unit cases.
+**Rationale:** The per-route timeout bug (fixed just before this) survived because
+the unit test built its fixture from the same wrong assumption as the code
+(`timeout` at the route level), so test and code agreed while both were wrong.
+Hand-built fixtures can only ever encode my assumptions; asserting the real sample
+catches any field whose schema *shape* I misread, and the second config guards the
+"works with any valid config" requirement against hardcoded assumptions.
+**Tradeoff:** These tests are coupled to the sample files, so intended schema
+changes require updating them — acceptable, since the sample defines the schema.
+**Rejected:** Relying on hand-built fixtures alone — fast to write but blind to
+exactly the class of schema-shape defect that just bit us.
+
 ### Implementation note — native type-stripping constraint
 TypeScript *parameter properties* (`constructor(readonly x: T)`) are rejected at
 runtime by Node's strip-only mode (they require code generation, not just type
