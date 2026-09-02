@@ -28,11 +28,16 @@ single `() => Promise<void>` so the first listed runs outermost.
 
 ```
 [ logging, circuitBreaker, auth, rateLimit, requestTransform,
-  timeout, retry, proxy, responseTransform ]
+  responseTransform, (retry(proxy) | proxy) ]
 ```
 
 Only the middleware a route actually declares are included; `proxy` is always the
-innermost terminal (it never calls `next`).
+innermost terminal (it never calls `next`). **Timeout and retry are not standalone
+rings** — they are upstream-invocation concerns folded into the terminal: timeout
+lives inside the proxy (it must abort the socket) and retry *wraps* the proxy
+(`withRetry(proxy)`), so each attempt gets a fresh timeout. This also respects the
+`compile` guard that `next` is called at most once. Implemented so far:
+`[logging, rateLimit?, retry(proxy) | proxy]`.
 
 ## Components
 
@@ -45,6 +50,7 @@ innermost terminal (it never calls `next`).
 | `pipeline/compile` | Build a route's onion from its declared policies | middleware units |
 | `middleware/*` | `auth`, `rateLimit`, `requestTransform`, `responseTransform`, `timeout`, `retry`, `circuitBreaker`, `logging` — each a `Middleware` | context, stores |
 | `proxy` | Innermost: rewrite Host, strip hop-by-hop headers, build the upstream request via Node `http`/`https`, apply the per-request timeout via `AbortController` (504 on abort, 502 on connection failure — decision #10), buffer the response into `ctx` (decision #6) | upstream select |
+| `middleware/retry` | Wraps the proxy as the terminal (not an onion ring); re-attempts on statuses/errors in `retry.on` with fixed/exponential backoff, each attempt getting its own timeout (decision #12) | proxy, errors |
 | `upstream/select` | round-robin / weighted target selection | — |
 | `upstream/health` | Active health checks; remove/restore targets | — |
 | `upstream/breaker` | Circuit-breaker state per route | — |

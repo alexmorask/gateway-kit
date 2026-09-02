@@ -1,10 +1,12 @@
 import { parseDuration } from './duration.ts';
 import type {
+  BackoffStrategy,
   BalanceStrategy,
   GatewayConfig,
   RateLimitScope,
   RateLimitStrategy,
   ResolvedRateLimit,
+  RetryConfig,
   RouteConfig,
   Target,
   Upstream,
@@ -70,6 +72,18 @@ function resolveUpstream(raw: unknown, at: string): Upstream {
   return { kind: 'single', url: asString(obj.url, `${at}.url`) };
 }
 
+function resolveRetry(raw: unknown, at: string): RetryConfig {
+  const obj = asObject(raw, at);
+  const on = obj.on;
+  if (!Array.isArray(on) || on.length === 0) fail(`${at}.on must be a non-empty array`);
+  return {
+    attempts: asNumber(obj.attempts, `${at}.attempts`),
+    backoff: asEnum<BackoffStrategy>(obj.backoff, ['fixed', 'exponential'], `${at}.backoff`),
+    initialDelayMs: parseDuration(asString(obj.initial_delay, `${at}.initial_delay`)),
+    on: on.map((code, i) => asNumber(code, `${at}.on[${i}]`)),
+  };
+}
+
 function resolveRoute(raw: unknown, at: string, globalTimeoutMs: number, globalRateLimit?: ResolvedRateLimit): RouteConfig {
   const obj = asObject(raw, at);
   const methods = obj.methods;
@@ -82,6 +96,7 @@ function resolveRoute(raw: unknown, at: string, globalTimeoutMs: number, globalR
     upstream: resolveUpstream(upstream, `${at}.upstream`),
     timeoutMs: upstream.timeout === undefined ? globalTimeoutMs : parseDuration(asString(upstream.timeout, `${at}.upstream.timeout`)),
     rateLimit: obj.rate_limit === undefined ? globalRateLimit : resolveRateLimit(obj.rate_limit, `${at}.rate_limit`),
+    retry: obj.retry === undefined ? undefined : resolveRetry(obj.retry, `${at}.retry`),
   };
 }
 

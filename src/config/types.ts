@@ -1,6 +1,14 @@
 export type RateLimitStrategy = 'fixed_window' | 'sliding_window';
 export type RateLimitScope = 'ip' | 'global';
 export type BalanceStrategy = 'round_robin' | 'weighted_round_robin';
+export type BackoffStrategy = 'fixed' | 'exponential';
+
+export interface RetryConfig {
+  attempts: number;
+  backoff: BackoffStrategy;
+  initialDelayMs: number;
+  on: number[];
+}
 
 export interface ResolvedRateLimit {
   requests: number;
@@ -34,6 +42,7 @@ export interface RouteConfig {
   upstream: Upstream;
   timeoutMs: number;
   rateLimit?: ResolvedRateLimit;
+  retry?: RetryConfig;
 }
 
 export interface GatewayConfig {

@@ -20,6 +20,7 @@ test('resolves the provided gateway.yaml exactly as the schema intends', () => {
 
   assert.equal(byPath['/api/orders']!.timeoutMs, 5_000);
   assert.deepEqual(byPath['/api/orders']!.rateLimit, { requests: 10, windowMs: 10_000, strategy: 'fixed_window', per: 'ip' });
+  assert.deepEqual(byPath['/api/orders']!.retry, { attempts: 3, backoff: 'exponential', initialDelayMs: 1_000, on: [502, 503, 504] });
 
   assert.equal(byPath['/api/products']!.timeoutMs, 10_000);
   assert.equal(byPath['/api/products']!.stripPrefix, true);

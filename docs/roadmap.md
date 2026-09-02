@@ -67,7 +67,7 @@ sliding_window; `per: ip` / `per: global`; route `rate_limit` overrides
   keeps serving other routes.
 - **DoD:** as above.
 
-### T6 — Retries — `todo`
+### T6 — Retries — `done`
 `retry` middleware wrapping the proxy.
 - **Acceptance (R8):** a response whose status is in `retry.on` triggers up to
   `attempts` retries with `fixed`/`exponential` backoff from `initial_delay`; a

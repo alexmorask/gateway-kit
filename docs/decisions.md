@@ -193,6 +193,34 @@ changes require updating them — acceptable, since the sample defines the schem
 **Rejected:** Relying on hand-built fixtures alone — fast to write but blind to
 exactly the class of schema-shape defect that just bit us.
 
+## 12. Retry semantics: total-attempts, retry on gateway errors too, method-agnostic
+
+**Decision:** `retry.attempts` is the **total** number of tries (so `attempts: 3`
+= 1 initial + up to 2 retries). Retry fires when the outcome status is in
+`retry.on`, whether that status came from the upstream's response *or* from a
+gateway-generated `GatewayError` (502 on connection failure, 504 on timeout).
+Backoff is `initialDelayMs` for `fixed`, `initialDelayMs * 2^(n-1)` for
+`exponential`. Retry is applied regardless of HTTP method. `withRetry` wraps the
+proxy and becomes the pipeline's terminal, so each attempt gets its own timeout.
+**Rationale:** `attempts` reads most naturally as a total try count (ambiguous in
+the config — call made and documented per the brief). Connection refusals and
+timeouts surface as `GatewayError(502/504)`, and a config listing 502/504 in `on`
+clearly wants those transient failures retried, so honoring both response and
+error statuses matches intent. Wrapping the proxy (rather than adding an onion
+ring that re-drives `next()`) respects the "next once" guard and keeps per-attempt
+timeouts free.
+**Tradeoff:** Retrying **non-idempotent** methods (POST) on 503/504 can duplicate
+a side effect if the upstream actually processed the request before failing. We
+retry per config because the schema exposes no per-method or idempotency knob;
+the risk is real and called out as future work (gate retries to idempotent
+methods, or add an `idempotent`/`retry_methods` field).
+**Rejected:** `attempts` = additional retries (1+3=4 tries) — also defensible;
+chose total for the simpler mental model. Retrying only on upstream *response*
+statuses — would ignore connection/timeout failures that are exactly what 502/504
+in `on` describe. Gating to idempotent methods now — safer, but contradicts a
+config that enables retry on a route whose `methods` include POST, and isn't
+expressible in the schema.
+
 ### Implementation note — native type-stripping constraint
 TypeScript *parameter properties* (`constructor(readonly x: T)`) are rejected at
 runtime by Node's strip-only mode (they require code generation, not just type
