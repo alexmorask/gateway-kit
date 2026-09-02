@@ -1,150 +1,166 @@
-# DECISIONS — GatewayKit
+# Design Decisions — GatewayKit
 
-The narrative behind the build: how features were prioritized, how the system is
-shaped and why, what would come next, and how AI tooling was used. The
-fork-by-fork log with full Decision / Rationale / Tradeoff / Rejected detail lives
-in [`docs/decisions.md`](docs/decisions.md); this is the reader's guide to it.
+This is the story of how I built GatewayKit: what I chose to work on and why, how
+the code is organized, the trade-offs I made, and what I'd do with more time. I
+kept a running decision log as I went in [`docs/decisions.md`](docs/decisions.md)
+with the full reasoning for each call; this document is the readable summary, and
+it points there (by number) when you want the detail.
 
-## How features were prioritized
+## What I built first, and why
 
-The config is intentionally larger than fits two hours, so the order was chosen to
-guarantee a passing, coherent submission at every step rather than a wide, brittle
-one.
+The config is deliberately bigger than two hours allows, so I ordered the work so
+that I'd have a working, coherent gateway at every stopping point rather than a
+pile of half-finished features.
 
-1. **Core requirements first, as a walking skeleton.** Config load/validate +
-   `/health` (T1), then routing + proxying + 404/405 + `strip_prefix` (T2). After
-   T2 the five non-negotiable requirements passed end-to-end — the floor for a
-   passing submission — so everything after is additive, never load-bearing for
-   the baseline.
-2. **The seam, proven early.** Structured logging + correlation id (T3) was
-   deliberately ordered *before* the feature tickets, to prove the middleware seam
-   carries a second concern with one line of wiring — so the feature work that
-   piled on afterward was known to be cheap.
-3. **Resilience over breadth.** Rate limiting (T4), timeouts + resilient failures
-   (T5), retries (T6). These target the failure modes the brief names explicitly —
-   50 concurrent requests, upstream down, upstream slow — which is the 25%
-   "production thinking" axis. Rate limiting came first because the concurrency
-   scenario is the marquee one.
-4. **Backlog pulled only after core landed early.** API-key auth and load
-   balancing were pulled from backlog once the core was done ahead of schedule,
-   in value-per-risk order (auth is a cheap clean 401; load balancing was
-   self-contained and retired an interim limitation).
+I started with the non-negotiable core: load and validate the config, answer
+`/health`, then route requests, proxy them, and return 404/405 correctly. Once
+that was done the gateway already met all five required behaviors end to end, so
+everything after that point was a bonus and couldn't break the baseline.
 
-"A few features built cleanly beats many half-built" was the governing rule: every
-shipped feature has unit + integration tests and was verified end-to-end against
-the real `gateway.yaml`.
+Next I added structured request logging with a correlation ID. I did this early on
+purpose: it was the first real proof that my middleware setup could take on a new
+concern with almost no wiring, which told me the rest of the features would be
+cheap to add.
 
-## Architecture & trade-offs
+Then I focused on resilience: rate limiting, timeouts, handling upstreams that are
+down, and retries. I picked these next because they're the failure cases the brief
+calls out directly — 50 requests hitting a rate-limited route at once, an upstream
+that's down, an upstream that's slow. Rate limiting went first because the
+concurrency case is the hardest and most interesting one to get right.
 
-**Mental model: a reverse proxy that is a per-route pipeline of middleware.** Each
-request runs through an onion of small `(ctx, next) => Promise<void>` middleware,
-with the proxy as the innermost terminal. Each route's pipeline is compiled once
-at startup from only the policies that route declares:
+Only after the core was done and I was ahead of schedule did I pull two features
+off the backlog: API-key auth (cheap and clean) and load balancing (self-contained,
+and it let me remove a temporary shortcut I'd taken earlier).
+
+Throughout, the rule was "a few features done well beat a lot done badly." Every
+feature I shipped has both unit and integration tests and was checked by running it
+against the real `gateway.yaml`, not just in tests.
+
+## How the gateway is put together
+
+The whole thing is one idea: **a request flows through a chain of small middleware,
+and the actual call to the upstream server is the last link in the chain.** Each
+middleware does one job (log, rate-limit, authenticate, and so on) and can either
+handle the request itself or pass it along. Every route gets its own chain, built
+once at startup from only the features that route actually uses:
 
 ```
-[ logging, rateLimit?, auth?, (retry(proxy) | proxy) ]
+logging  ->  rate limit?  ->  auth?  ->  (retry around the proxy | proxy)
 ```
 
-**Why this shape — extensibility.** Every cross-cutting concern attaches at one
-seam. Adding a config feature is adding one middleware plus one line in
-`assembleMiddleware` — no changes to the server, router, or other middleware. This
-was demonstrated repeatedly: logging, rate limiting, auth, and load balancing each
-went in without touching unrelated code. "Another engineer could add a feature in
-an afternoon" is literally how the last four features were built.
+The reason it's built this way is so that adding a new feature is easy: you write
+one small middleware and add one line that plugs it into the chain. You don't touch
+the server, the router, or any other middleware. I proved this out in practice —
+logging, rate limiting, auth, and load balancing all went in without changing
+anything unrelated. When the brief asks whether another engineer could add a config
+feature in an afternoon, that's not a hope, it's how I built the last four features.
 
-The load-bearing trade-offs (full reasoning in `docs/decisions.md`):
+### The trade-offs worth knowing about
 
-- **Small YAML dependency, not a hand-rolled parser** (#1). The gateway must load
-  *any* valid config in the schema; a hand-rolled parser that chokes on the
-  graders' unseen file fails a core requirement. The challenge permits a parser,
-  so the one dependency is worth it.
-- **In-memory, single-process state** (#3). Rate-limit buckets, balancer cursors,
-  and (would-be) breaker counts live in this process. Node's single-threaded event
-  loop makes rate-limit check-and-increment atomic, so 50 concurrent requests
-  admit *exactly* the limit with no locks. Trade-off: limits are per-instance, not
-  coordinated across a fleet.
-- **Timeout and retry are proxy-invocation concerns, not standalone rings** (#10,
-  #12). A timeout must abort the socket, so it lives inside the proxy; retry
-  *wraps* the proxy as the terminal. A useful emergent result: because retry
-  re-invokes the proxy and the balancer cursor advances each call, **retries
-  naturally fail over to the next upstream target** (#14).
-- **Typed error taxonomy** (#10). Upstream failures become `GatewayError(status,
-  code)` — `502` refused, `504` timeout — mapped once at the server boundary and
-  read by the logger, so the access log matches what the client received.
-- **Lenient config validation** (#5). The validator strictly checks the fields the
-  implemented features use and passes over blocks for not-yet-built features, so a
-  config exercising a deferred feature still boots and serves its other routes.
-- **Security-conscious defaults** (#9, #13). Rate limiting keys on the socket peer,
-  not spoofable `X-Forwarded-For`; rate limiting runs *before* auth so key
-  brute-forcing is throttled; the API key is stripped before forwarding upstream.
+- **I used a small YAML library instead of writing my own parser** (#1). The gateway
+  has to load *any* valid config in this schema, including the different one you'll
+  test with. A hand-written parser that trips over some YAML edge case in your file
+  would fail a core requirement, and the brief allows a parser, so this was an easy
+  call.
+- **All state lives in memory in a single process** (#3): rate-limit counters, the
+  load-balancer's position, and so on. A nice consequence is that because Node runs
+  on a single thread, checking-and-incrementing a rate-limit counter can't be
+  interrupted, so 50 simultaneous requests admit *exactly* the limit with no locks
+  and no double-counting. The cost is that limits are per-instance — if you ran two
+  copies of the gateway, each would track its own counts.
+- **Timeouts and retries live with the proxy, not as their own middleware** (#10,
+  #12). A timeout has to actually cancel the network request, which only the code
+  making that request can do, so it belongs in the proxy. Retry wraps the proxy and
+  re-runs it. A nice side effect fell out of this: since each retry re-runs the
+  proxy and the load balancer advances to the next target each time, **a retry
+  automatically tries a different upstream** (#14) — failover for free.
+- **Upstream failures are turned into typed errors** (#10) — a 502 when the upstream
+  refuses the connection, a 504 when it times out. These are handled in one place
+  and reused by the logger, so the access log always shows the same status the
+  client got.
+- **Config validation is strict about what I use and relaxed about the rest** (#5).
+  I fully validate the fields the built features rely on, and quietly skip config
+  blocks for features I didn't build. That way a config that uses, say, circuit
+  breakers still starts up and serves all its other routes.
+- **I made the safe security choices by default** (#9, #13): rate limiting counts by
+  the caller's actual network address rather than the `X-Forwarded-For` header
+  (which a caller can fake), rate limiting runs before auth so nobody can hammer the
+  auth check trying to guess keys, and a valid API key is stripped off the request
+  before it's forwarded so the gateway's credential never leaks to the backend.
 
-**Testing discipline worth calling out** (#11): config parsing is verified against
-the *actual* `gateway.yaml` and a second, structurally different config — not just
-hand-built fixtures. This was added after a real bug (per-route `timeout` is nested
-under `upstream`, but the code initially read it at the route level; the unit test
-had encoded the same wrong assumption, so it passed while wrong). Anchoring tests
-to the real spec artifact is how that class of schema-shape bug gets caught.
+### One testing decision I want to highlight (#11)
 
-## What we'd build next (ranked)
+I validate the config against the *real* `gateway.yaml` and a second config with a
+different shape, not just against test fixtures I wrote by hand. This came out of an
+actual bug: the per-route `timeout` is nested under `upstream` in the config, but my
+code originally read it one level up. My unit test had made the same wrong
+assumption, so it passed while the code was wrong. Checking against the real config
+file is what catches that kind of "I misread the schema" mistake, so I added it as a
+standing guardrail.
 
-From [`docs/roadmap.md`](docs/roadmap.md), in value-per-risk order:
+## What I'd build next
 
-1. **Circuit breaker** (config `circuit_breaker`). A per-route state machine
-   (closed → open after N failures in a window → half-open after cooldown →
-   closed/open), returning `503 {error:"service_unavailable", retry_after}` while
-   open. ~20–25 min: needs a time-based state store with an injectable clock, a
-   decision on what counts as a "failure," and half-open trial semantics. Slots in
-   as one more outer middleware on the existing seam.
-2. **Request/response transforms** (config `request_transform`/`response_transform`).
-   Header add/remove is trivial; the effort is the body work — dot-path field
-   mapping, response enveloping, and a `$token` resolver (`$request_time`,
-   `$literal:`, `$body`, `$response_time`, `$route_path`). Highest-risk item; would
-   land as two middleware (request-side and response-side) around the proxy.
-3. **Active health checks** (config `health_check`). Background polling of each
-   target's health path, removing unhealthy targets from the balancer's rotation.
-   Needs timer lifecycle management and pairs with load balancing.
-4. **Hardening carried in the decision log** (`docs/decisions.md` #15 + entries):
-   positive-integer validation of numeric config fields (`weight: 0` currently
-   makes the balancer fall back to the first target), a request-body size cap,
-   eviction/TTL for fixed-window rate-limit buckets, trusted-proxy
-   `X-Forwarded-For` support (so `per: ip` works behind a load balancer),
-   constant-time API-key comparison, per-API-key rate limiting, a gateway-wide
-   option for `per: global` (currently per-route), and server-boundary logging of
-   404/405 for total ingress visibility.
+In the order I'd tackle them (see [`docs/roadmap.md`](docs/roadmap.md)):
 
-A pre-finalize multi-agent review (code, tests, error handling, type design)
-caught and fixed one real crash — an unhandled rejection when a client resets a
-connection mid-upload — plus a timeout-vs-502 misclassification; both are covered
-by new tests. The items above are the review's remaining non-critical findings,
-kept honest here rather than silently carried.
+1. **Circuit breaker** (the `circuit_breaker` config). Trip after N failures in a
+   window, return a 503 with a `retry_after` while tripped, then test the waters
+   again after a cooldown. It's the biggest of the remaining items (roughly 20–25
+   minutes) because it's a small state machine that needs a clock, a definition of
+   what counts as a "failure," and the half-open "let one request through to check"
+   logic. It would slot in as one more middleware near the front of the chain.
+2. **Request/response transforms** (the `..._transform` config). Adding and removing
+   headers is easy; the real work is the body: remapping fields by dotted path,
+   wrapping responses in an envelope, and resolving the `$request_time` /
+   `$literal:` / `$body` / `$response_time` / `$route_path` placeholders. This is the
+   riskiest item, and it would be two middleware, one on the way in and one on the
+   way out.
+3. **Active health checks** (the `health_check` config). Poll each backend in the
+   background and pull unhealthy ones out of the load-balancer rotation. Needs some
+   timer lifecycle handling and pairs naturally with load balancing.
+4. **A handful of smaller hardening items** I noted along the way (in
+   `docs/decisions.md`): reject nonsensical numbers in the config (a `weight` of 0
+   currently makes the balancer quietly fall back to the first target), cap request
+   body size, expire idle rate-limit counters, trust `X-Forwarded-For` when the
+   gateway is behind a known proxy so `per: ip` works there, compare API keys in
+   constant time, support per-API-key rate limits, offer a truly gateway-wide
+   `per: global` (today it's per-route), and log 404s/405s too.
 
-## Partial features
+Before finalizing I ran a multi-agent review over the code, tests, error handling,
+and types. It caught one real bug — the gateway could be crashed by a client that
+dropped its connection in the middle of sending a request body — which I fixed, plus
+a case where a timeout was being reported as a 502 instead of a 504. Both now have
+tests. The smaller items listed above are the review's remaining suggestions, which
+I'm noting honestly here rather than quietly leaving out.
 
-**None.** Everything listed as implemented is fully built, tested, and verified
-end-to-end. Deferred features (circuit breaker, transforms, health checks) are
-*unimplemented* — their config blocks are validated leniently so any valid config
-still boots, but no half-built code ships claiming to be done.
+## What's half-finished
 
-## AI tool usage
+Nothing. Everything I've listed as built is fully working and tested. The features I
+didn't get to (circuit breaker, transforms, health checks) simply aren't
+implemented — their config is accepted so the gateway still starts, but I haven't
+shipped any half-written code pretending to be done.
 
-This build was done with Claude Code (Opus), used deliberately as an orchestrated,
-phased collaborator rather than an autocomplete:
+## How I used AI
 
-- **A phased workflow with human checkpoints.** Intake → product spec →
-  architecture → roadmap → per-ticket implementation → finalize, each a distinct
-  step that stopped for human sign-off. The planning trail was committed *before*
-  any code so the git history shows the reasoning landed first.
-- **Test-driven throughout.** Each behavior ticket was red → green → refactor;
-  scaffolding was proven by running, not by fabricated tests. Every "done" claim
-  was backed by running the suite and the gateway, not asserted.
-- **The human drove prioritization and caught issues.** Scope calls (lean vs. full
-  workflow, which backlog to pull, stopping before the circuit breaker to protect
-  deliverables) were human decisions. A human question ("how do we honor per-route
-  timeout?") surfaced the `upstream.timeout` nesting bug; another ("are other
-  tests complicit?") drove the real-config fidelity tests.
-- **Decisions recorded as they were made** in `docs/decisions.md`, so this
-  document and the walkthrough rest on a contemporaneous log, not reconstruction.
-- **Quality passes via tooling** — a `/simplify` reuse pass (extracted the
-  `jsonResponse` helper) and a multi-agent review before finalizing.
+I built this with Claude Code (Opus), and I used it as a disciplined collaborator
+rather than an autocomplete:
 
-Every line is explainable; nothing was accepted without understanding it.
+- **I worked in phases with a checkpoint at each one:** understand the problem,
+  write the spec, design the architecture, plan the tickets, then implement one
+  ticket at a time, then finalize. I committed all the planning before writing code,
+  so the git history shows the thinking came first.
+- **I worked test-first.** Every feature was a failing test, then the code to make it
+  pass, then cleanup. I never called something done without actually running the
+  tests and the gateway to prove it.
+- **I stayed in the driver's seat on the decisions.** The scope calls — going lean
+  instead of ceremonial, which backlog items to pull, stopping before the circuit
+  breaker so I'd have time to finish the docs — were mine. A couple of my questions
+  also caught real problems: asking how per-route timeouts were honored surfaced the
+  nesting bug, and asking whether other tests shared that blind spot led to the
+  real-config validation tests.
+- **I recorded decisions as I made them** in `docs/decisions.md`, so this write-up
+  and the walkthrough are based on notes I took at the time, not on memory.
+- **I used tooling for the quality passes:** a cleanup pass that factored out a
+  shared helper, and the multi-agent review before finalizing.
+
+I can explain every line in the submission. Nothing went in that I didn't
+understand.
