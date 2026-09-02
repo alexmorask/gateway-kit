@@ -44,7 +44,7 @@ innermost terminal (it never calls `next`).
 | `router` | `match(method, path)` → matched route \| 404 \| 405; longest-prefix wins | config |
 | `pipeline/compile` | Build a route's onion from its declared policies | middleware units |
 | `middleware/*` | `auth`, `rateLimit`, `requestTransform`, `responseTransform`, `timeout`, `retry`, `circuitBreaker`, `logging` — each a `Middleware` | context, stores |
-| `proxy` | Innermost: build upstream request via Node `http`/`https` client, collect response into `ctx` | upstream select |
+| `proxy` | Innermost: rewrite Host, strip hop-by-hop headers, build the upstream request via Node `http`/`https`, buffer the response into `ctx` (decision #6) | upstream select |
 | `upstream/select` | round-robin / weighted target selection | — |
 | `upstream/health` | Active health checks; remove/restore targets | — |
 | `upstream/breaker` | Circuit-breaker state per route | — |

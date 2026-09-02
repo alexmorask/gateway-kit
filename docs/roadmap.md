@@ -26,7 +26,7 @@ parser** (`"30s"`/`"1m"`/`"2h"` → ms) since validation resolves timeouts/windo
 - **DoD:** tests green · typecheck clean · runs end-to-end · docs updated ·
   committed.
 
-### T2 — Router + proxy pipeline + mock upstream — `todo`
+### T2 — Router + proxy pipeline + mock upstream — `done`
 Router `match(method, path)` (longest-prefix, 404/405). The onion pipeline seam
 with `proxy` as the innermost terminal: forward method/headers/body to the
 upstream, return its response; honor `strip_prefix`. In-repo **mock upstream**

@@ -79,3 +79,37 @@ feature is built, rather than being caught at startup.
 **Rejected:** Strict whole-schema validation up front — catches every typo but
 makes the gateway refuse configs that use any feature we haven't implemented yet,
 breaking the "boots on any valid config" guarantee mid-build.
+
+## 6. HTTP forwarding semantics: buffer bodies, rewrite Host, strip hop-by-hop
+
+**Decision:** The proxy buffers the full request (and upstream response) body
+before forwarding, rewrites the `Host` header to the upstream, strips hop-by-hop
+headers (`connection`, `keep-alive`, `transfer-encoding`, `upgrade`, …) on both
+legs, preserves the query string, and — for `strip_prefix` — forwards `/` when
+the request path equals the route path exactly.
+**Rationale:** Buffering is what lets later tickets transform request/response
+bodies (R11/R12) and makes proxying a plain, testable `Buffer` in / `Buffer` out.
+Host rewrite and hop-by-hop stripping are correct reverse-proxy behavior — hop-by-
+hop headers describe a single connection and must not leak to the next hop.
+**Tradeoff:** Buffering holds each body fully in memory, so a very large upload or
+download costs proportional memory and loses streaming/backpressure. Acceptable
+for this gateway's payload profile; streaming pass-through is future work.
+**Rejected:** Streaming pass-through (pipe req→upstream→res) — constant memory and
+true backpressure, but body transforms become far harder and the happy path more
+complex; wrong trade for a config-driven gateway whose headline features
+restructure bodies.
+
+## 7. Balanced upstreams proxy to the first target until load balancing lands
+
+**Decision:** For an upstream declared with `targets`, the proxy currently forwards
+to the first target; real `round_robin` / `weighted_round_robin` selection is
+backlog ticket B2.
+**Rationale:** Keeps the "boots and serves on any valid config" guarantee — a
+route using `targets` still proxies successfully — without shipping a half-built
+balancer. The selection seam (`baseUrl(upstream)`) is the single place B2 will
+replace.
+**Tradeoff:** Load is not distributed yet; a multi-target route hits only one
+backend until B2.
+**Rejected:** Refusing balanced upstreams until B2 — would break configs that use
+`targets`. Shipping a rushed balancer now — risks a brittle feature ahead of the
+prioritized resilience work.
